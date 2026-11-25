@@ -18,6 +18,12 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / '.env')
+
+
+def env_list(name, default):
+    return [item.strip() for item in os.getenv(name, default).split(',') if item.strip()]
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
@@ -27,12 +33,25 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-local-development-k
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = [host.strip() for host in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if host.strip()]
+ALLOWED_HOSTS = env_list(
+    'DJANGO_ALLOWED_HOSTS',
+    'localhost,127.0.0.1,backend',
+)
+
+LOCAL_FRONTEND_ORIGINS = (
+    'http://localhost:3000,http://127.0.0.1:3000,'
+    'http://localhost:3001,http://127.0.0.1:3001'
+)
+CORS_ALLOWED_ORIGINS = env_list('CORS_ALLOWED_ORIGINS', LOCAL_FRONTEND_ORIGINS)
+CORS_URLS_REGEX = r'^/api/.*$'
+CORS_ALLOW_CREDENTIALS = False
+CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS', LOCAL_FRONTEND_ORIGINS)
 
 
 # Application definition
 
 INSTALLED_APPS = [
+    'corsheaders',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -44,6 +63,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',

@@ -47,38 +47,49 @@ export function CreateTicketForm() {
       priority: "medium",
     },
   });
-  const title = watch("title");
   const description = watch("description");
   const [suggestionState, setSuggestionState] = useState<
     "idle" | "waiting" | "loading" | "ready" | "unavailable"
   >("idle");
-  const [suggested, setSuggested] = useState<Suggestion | null>(null);
+  const [suggestionError, setSuggestionError] = useState("");
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState<Ticket | null>(null);
   const categoryEdited = useRef(false);
   const priorityEdited = useRef(false);
+  const suggestionRequestId = useRef(0);
 
   useEffect(() => {
+    const requestId = ++suggestionRequestId.current;
     const trimmedDescription = description.trim();
     if (trimmedDescription.length < 20) {
       setSuggestionState("idle");
-      setSuggested(null);
+      setSuggestionError("");
       return;
     }
 
     setSuggestionState("waiting");
+    setSuggestionError("");
     const controller = new AbortController();
     const timeout = window.setTimeout(async () => {
+      if (requestId !== suggestionRequestId.current) return;
       setSuggestionState("loading");
       try {
         const response = await fetch("/api/tickets/classify/", {
           method: "POST",
+          credentials: "omit",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ description: trimmedDescription }),
           signal: controller.signal,
         });
-        if (!response.ok)
-          throw new Error("Suggestions are unavailable right now.");
+        if (controller.signal.aborted || requestId !== suggestionRequestId.current) return;
+        if (!response.ok) {
+          const details = (await response.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          throw new Error(
+            details?.error || `Suggestion request failed (${response.status}).`,
+          );
+        }
 
         const result = (await response.json()) as {
           category?: string;
@@ -90,24 +101,26 @@ export function CreateTicketForm() {
         ) {
           throw new Error("The suggestions could not be read.");
         }
+        if (controller.signal.aborted || requestId !== suggestionRequestId.current)
+          return;
 
         const nextSuggestion = {
           category: result.category as Suggestion["category"],
           priority: result.priority as Suggestion["priority"],
         };
-        setSuggested(nextSuggestion);
         if (!categoryEdited.current)
           setValue("category", nextSuggestion.category);
         if (!priorityEdited.current)
           setValue("priority", nextSuggestion.priority);
         setSuggestionState("ready");
       } catch (requestError) {
-        if (
-          requestError instanceof DOMException &&
-          requestError.name === "AbortError"
-        )
+        if (controller.signal.aborted || requestId !== suggestionRequestId.current)
           return;
-        setSuggested(null);
+        setSuggestionError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Could not get suggestions.",
+        );
         setSuggestionState("unavailable");
       }
     }, 650);
@@ -123,6 +136,7 @@ export function CreateTicketForm() {
     try {
       const response = await fetch("/api/tickets/", {
         method: "POST",
+        credentials: "omit",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
       });
@@ -143,7 +157,7 @@ export function CreateTicketForm() {
       const ticket = (await response.json()) as Ticket;
       setSubmitted(ticket);
       reset();
-      setSuggested(null);
+      setSuggestionError("");
       setSuggestionState("idle");
       categoryEdited.current = false;
       priorityEdited.current = false;
@@ -157,25 +171,17 @@ export function CreateTicketForm() {
   }
 
   const suggestionMessage = {
-    idle: "Suggestions appear as you describe the issue",
-    waiting: "Getting your suggestions ready...",
-    loading: "Finding the right category and priority...",
-    ready: "Suggestions added. Adjust them anytime.",
-    unavailable: "Suggestions are unavailable right now. You can choose below.",
+    idle: "Add a little detail to get automatic suggestions.",
+    waiting: "Preparing suggestions...",
+    loading: "Analyzing your description. This may take a little while...",
+    ready: "Suggestions added. You can change them below.",
+    unavailable: suggestionError
+      ? `Suggestions could not be loaded: ${suggestionError}`
+      : "Suggestions could not be loaded. You can choose manually.",
   }[suggestionState];
 
   return (
-    <section className="form-card" aria-labelledby="form-title">
-      <div className="form-card-heading">
-        <div>
-          <p className="form-kicker">TICKET DETAILS</p>
-          <h2 id="form-title">Tell us a little more</h2>
-        </div>
-        <span className="required-note">
-          <span>*</span> Required
-        </span>
-      </div>
-
+    <section className="form-card" aria-label="Ticket details">
       {submitted && (
         <div className="success-message" role="status">
           <span className="success-check" aria-hidden="true">
@@ -212,17 +218,13 @@ export function CreateTicketForm() {
           maxLength={200}
           aria-invalid={Boolean(errors.title)}
         />
-        <div className="field-hint">
-          <span>Keep it clear and concise</span>
-          <span>{title.length}/200</span>
-        </div>
         {errors.title && <p className="field-error">{errors.title.message}</p>}
 
         <label
           className="field-label description-label"
           htmlFor="ticket-description"
         >
-          What is happening? <span>*</span>
+          Description <span>*</span>
         </label>
         <textarea
           {...register("description", {
@@ -238,10 +240,6 @@ export function CreateTicketForm() {
           rows={6}
           aria-invalid={Boolean(errors.description)}
         />
-        <div className="field-hint">
-          <span>A little context can make all the difference</span>
-          <span>{description.length} characters</span>
-        </div>
         {errors.description && (
           <p className="field-error">{errors.description.message}</p>
         )}
@@ -250,12 +248,13 @@ export function CreateTicketForm() {
           className="suggestion-status"
           aria-live="polite"
           data-state={suggestionState}
+          aria-busy={suggestionState === "loading" || suggestionState === "waiting"}
         >
           <span
             className={`suggestion-indicator ${suggestionState === "loading" || suggestionState === "waiting" ? "is-pulsing" : ""}`}
             aria-hidden="true"
           >
-            *
+            {suggestionState === "loading" ? "◌" : "✦"}
           </span>
           <span>{suggestionMessage}</span>
         </div>
@@ -280,11 +279,6 @@ export function CreateTicketForm() {
                 </option>
               ))}
             </select>
-            {suggested && (
-              <span className="select-suggestion">
-                Suggested: {suggested.category}
-              </span>
-            )}
           </div>
           <div>
             <label className="field-label" htmlFor="ticket-priority">
@@ -305,11 +299,6 @@ export function CreateTicketForm() {
                 </option>
               ))}
             </select>
-            {suggested && (
-              <span className="select-suggestion">
-                Suggested: {suggested.priority}
-              </span>
-            )}
           </div>
         </div>
 
@@ -319,7 +308,6 @@ export function CreateTicketForm() {
           </p>
         )}
         <div className="form-actions">
-          <p>We will take a look as soon as we can.</p>
           <button
             className="submit-button"
             type="submit"
