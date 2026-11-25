@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Support Desk | New request",
-  description: "Tell our support team what you need help with.",
+  title: "Support Desk | Tickets",
+  description: "Submit support requests, manage tickets, and track support activity.",
 };
 
 export default function RootLayout({

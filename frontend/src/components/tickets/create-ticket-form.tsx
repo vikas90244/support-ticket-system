@@ -30,7 +30,7 @@ type Ticket = {
           priority: string 
 };
 
-export function CreateTicketForm() {
+export function CreateTicketForm({ onCreated }: { onCreated?: () => void }) {
   const {
     register,
     handleSubmit,
@@ -156,6 +156,7 @@ export function CreateTicketForm() {
 
       const ticket = (await response.json()) as Ticket;
       setSubmitted(ticket);
+      onCreated?.();
       reset();
       setSuggestionError("");
       setSuggestionState("idle");
