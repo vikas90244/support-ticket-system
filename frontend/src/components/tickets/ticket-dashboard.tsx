@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CreateTicketForm } from "./create-ticket-form";
+import Link from "next/link";
 
 type Category = "billing" | "technical" | "account" | "general";
 type Priority = "low" | "medium" | "high" | "critical";
@@ -164,7 +165,7 @@ export function TicketDashboard() {
   return (
     <main className="support-page">
       <header className="topbar">
-        <a className="brand" href="/">Support desk</a>
+        <Link className="brand" href="/">Support desk</Link>
       </header>
 
       <section className="page-content dashboard-content" aria-labelledby="page-title">
